@@ -149,12 +149,16 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
 .field input{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg .btn[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
-.swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.slot{border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--surface)}
-.slot select{width:100%;min-width:0}
+.swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:6px}
+.slot{border:2px solid var(--line);border-radius:10px;padding:5px;display:flex;flex-direction:column;gap:3px;min-width:0;background:var(--surface);user-select:none;-webkit-user-select:none}
+.slot.live{border-color:var(--tartan);background:var(--tartan-soft);cursor:pointer;touch-action:manipulation}
+.slot.live:active{transform:scale(.97)}
+.slot.live:focus-visible{outline:2px solid var(--lane);outline-offset:2px}
+.slot .who{font-weight:700;text-align:center;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 0}
+.slot select{width:100%;min-width:0;padding:4px 2px;font-size:.88rem}
 .slot.done{background:var(--easy-bg);border-color:var(--easy)}
-.swt{font:700 1.9rem var(--mono);text-align:center;font-variant-numeric:tabular-nums;line-height:1.1}
-.swn{font-size:.8rem;color:var(--muted);text-align:center;min-height:1.1em}
+.swt{font:700 1.35rem var(--mono);text-align:center;font-variant-numeric:tabular-nums;line-height:1.1}
+.swn{font-size:.7rem;color:var(--muted);text-align:center;min-height:1em;line-height:1.2}
 .stop{font-size:1.05rem;padding:12px 8px;background:var(--tartan);color:#fff;border-color:var(--tartan)}
 .stop:disabled{opacity:.3;cursor:default}
 .btn.big{font-size:1.1rem;padding:12px 26px}
@@ -667,24 +671,31 @@ const swGrid=document.getElementById("swGrid"), swTime=document.getElementById("
 const PLANK_MAX=300;
 const fmtSW=sec=>sw.mode==="pl"?`${Math.floor(sec)} s`:sec.toFixed(2);
 function swHelp(){document.getElementById("swHelp").textContent=sw.mode==="pl"
-  ?"Namen wählen, alle gleichzeitig mit «Start» los. Bricht die Körperlinie, «Stopp» beim Kind drücken. Nach 5 Minuten (300 s) stoppt die Uhr für alle, die noch halten. Die Sekunden landen direkt in der Liste des gewählten Zeitpunkts."
+  ?"Namen wählen, alle gleichzeitig mit «Start» los. Bricht die Körperlinie, aufs Feld des Kindes tippen. Nach 5 Minuten (300 s) stoppt die Uhr für alle, die noch halten. Die Sekunden landen direkt in der Liste des gewählten Zeitpunkts."
   :"Namen wählen, «Start» bei der ersten Bewegung drücken, «Ziel» wenn die Brust über der Linie ist. Pro Kind gilt automatisch die bessere Zeit aus allen Läufen.";}
 function swBuild(keepNames){
   const n=sw.mode==="pl"?12:4, old=sw.slots;
   sw.slots=Array.from({length:n},(_,i)=>({name:keepNames&&old[i]?old[i].name:"",end:null,note:""}));
   renderSW();
 }
-function optHTML(sel){
+function shortName(name){
+  const parts=name.trim().split(/\s+/), first=parts[0];
+  const same=roster.filter(k=>k.name.trim().split(/\s+/)[0]===first).length>1;
+  return same?name.trim():first;
+}
+function optHTML(sel,i){
   const t=swTime.value,f=sw.mode;
-  return `<option value="">– Name –</option>`+roster.map(k=>{const v=(results[t][k.name]||{})[f];
-    return `<option value="${esc(k.name)}"${k.name===sel?" selected":""}>${esc(k.name)}${v?" ✓":""}</option>`;}).join("");
+  const taken=new Set(sw.slots.filter((x,j)=>j!==i&&x.name).map(x=>x.name));
+  const opts=roster.filter(k=>k.name===sel||(!taken.has(k.name)&&!((results[t][k.name]||{})[f])))
+    .sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name),"de"));
+  return `<option value="">– Name –</option>`+opts.map(k=>`<option value="${esc(k.name)}"${k.name===sel?" selected":""}>${esc(shortName(k.name))}</option>`).join("");
 }
 function renderSW(){
-  swGrid.innerHTML=sw.slots.map((s,i)=>`<div class="slot${s.end!=null?" done":""}">
-    <select id="sw-sel-${i}" data-i="${i}" aria-label="${sw.mode==="pl"?"Platz":"Bahn"} ${i+1}" ${sw.running?"disabled":""}>${optHTML(s.name)}</select>
+  swGrid.innerHTML=sw.slots.map((s,i)=>{const live=sw.running&&s.name&&s.end==null;
+    return `<div class="slot${s.end!=null?" done":""}${live?" live":""}" ${live?`data-stop="${i}" role="button" tabindex="0" aria-label="${esc(s.name)} stoppen"`:""}>
+    ${sw.running&&s.name?`<div class="who">${esc(shortName(s.name))}</div>`:`<select id="sw-sel-${i}" data-i="${i}" aria-label="Platz ${i+1}" ${sw.running?"disabled":""}>${optHTML(s.name,i)}</select>`}
     <div class="swt" id="sw-t-${i}">${fmtSW(s.end!=null?s.end:0)}</div>
-    <div class="swn">${esc(s.note)}</div>
-    <button type="button" class="btn stop" data-stop="${i}" ${!sw.running||s.end!=null||!s.name?"disabled":""}>${sw.mode==="pl"?"Stopp":"Ziel"}</button></div>`).join("");
+    <div class="swn">${esc(s.note)}</div></div>`;}).join("");
   document.getElementById("swStart").disabled=sw.running;
   document.querySelectorAll(".seg .btn").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.mode===sw.mode);b.disabled=sw.running;});
   swTime.disabled=sw.running;
@@ -699,7 +710,7 @@ function tick(){
 function stopSlot(i,forced){
   const s=sw.slots[i]; if(!sw.running||!s||s.end!=null||!s.name)return;
   const el=forced!=null?forced:(performance.now()-sw.t0)/1000; s.end=el; const t=swTime.value;
-  if(sw.mode==="pl"){const v=Math.min(PLANK_MAX,Math.floor(el));commitValue(t,s.name,"pl",String(v));s.note=v>=PLANK_MAX?"5 min erreicht · 300 s eingetragen":`${v} s eingetragen`;}
+  if(sw.mode==="pl"){const v=Math.min(PLANK_MAX,Math.floor(el));commitValue(t,s.name,"pl",String(v));s.note=v>=PLANK_MAX?"5 min ✓":"eingetragen ✓";}
   else{const v=Math.round(el*100)/100, old=num((results[t][s.name]||{}).s20), best=old!=null?Math.min(old,v):v;
     commitValue(t,s.name,"s20",best.toFixed(2)); s.note=old!=null&&best<v?`Bestzeit bleibt ${best.toFixed(2)}`:`${best.toFixed(2)} eingetragen`;}
   if(sw.slots.every(x=>!x.name||x.end!=null)){sw.running=false;cancelAnimationFrame(sw.raf);
@@ -708,7 +719,8 @@ function stopSlot(i,forced){
   renderSW();
 }
 swGrid.addEventListener("change",e=>{const i=e.target.dataset.i;if(i==null)return;sw.slots[i].name=e.target.value;sw.slots[i].end=null;sw.slots[i].note="";renderSW();});
-swGrid.addEventListener("click",e=>{const b=e.target.closest("[data-stop]");if(b)stopSlot(+b.dataset.stop);});
+swGrid.addEventListener("pointerdown",e=>{const b=e.target.closest("[data-stop]");if(b){e.preventDefault();stopSlot(+b.dataset.stop);}});
+swGrid.addEventListener("keydown",e=>{const b=e.target.closest("[data-stop]");if(b&&(e.key==="Enter"||e.key===" ")){e.preventDefault();stopSlot(+b.dataset.stop);}});
 document.getElementById("swStart").addEventListener("click",async()=>{
   if(!sw.slots.some(s=>s.name)){swStatus.className="status err";swStatus.textContent="Zuerst mindestens einen Namen wählen.";return;}
   const names=sw.slots.map(s=>s.name).filter(Boolean); if(new Set(names).size!==names.length){swStatus.className="status err";swStatus.textContent="Ein Name ist doppelt gewählt.";return;}
