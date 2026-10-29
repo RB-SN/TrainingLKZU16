@@ -147,6 +147,18 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
 @media (max-width:560px){.syncform{grid-template-columns:1fr}}
 .field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);min-width:0}
 .field input{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg .btn[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.slot{border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--surface)}
+.slot select{width:100%;min-width:0}
+.slot.done{background:var(--easy-bg);border-color:var(--easy)}
+.swt{font:700 1.9rem var(--mono);text-align:center;font-variant-numeric:tabular-nums;line-height:1.1}
+.swn{font-size:.8rem;color:var(--muted);text-align:center;min-height:1.1em}
+.stop{font-size:1.05rem;padding:12px 8px;background:var(--tartan);color:#fff;border-color:var(--tartan)}
+.stop:disabled{opacity:.3;cursor:default}
+.btn.big{font-size:1.1rem;padding:12px 26px}
+.btn:disabled{opacity:.4;cursor:default}
 .status{font-size:.88rem;color:var(--easy);min-height:1.2em}
 .status.err{color:var(--peak)}
 .store{font-size:.8rem;color:var(--muted)}
@@ -277,8 +289,19 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
     <div class="status" id="lkStatus" aria-live="polite"></div>
   </div>
 
+  <div class="card wide" id="swCard">
+    <h3>4 · Plank-Stoppuhr (12 Plätze)</h3>
+    <div class="toolbar">
+      <label>Zeitpunkt <select id="swTime"><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option></select></label>
+    </div>
+    <div class="sub" id="swHelp"></div>
+    <div class="swgrid" id="swGrid"></div>
+    <div class="btns"><button class="btn primary big" type="button" id="swStart">Start</button><button class="btn" type="button" id="swZero">Auf 0 stellen</button><button class="btn" type="button" id="swClear">Neue Gruppe</button></div>
+    <div class="status" id="swStatus" aria-live="polite"></div>
+  </div>
+
   <div class="card wide">
-    <h3>4 · Resultate eintragen und Excel speichern</h3>
+    <h3>5 · Resultate eintragen und Excel speichern</h3>
     <div class="toolbar">
       <label>Zeitpunkt <select id="tfTime"><option value="T1">T1 · Okt 2026</option><option value="T2">T2 · Dez 2026</option><option value="T3">T3 · März/April 2027</option></select></label>
       <button class="btn primary" type="button" id="xlsxBtn">Excel speichern</button>
@@ -528,7 +551,7 @@ const TESTS=[["20 m","Hochstart. Stoppuhr ab 1. Bewegung bis Brust über der Lin
  ["Standweitsprung","Tartan/Kunstrasen, Massband. Beidbeinig, stehen bleiben, bis hintere Ferse. 3 Versuche."],
  ["5er-Sprung","Aus parallelem Stand 5 Wechselsprünge, beidbeinig landen und stehen. Bis hintere Ferse. 2 Versuche."],
  ["Kugel-Schocken 3 kg","Rückwärts über Kopf, beidhändig, für alle 3 kg. Bis 1. Aufprall. 3 Versuche. Alle werfen in eine Richtung."],
- ["Plank","Unterarmstütz bis die Linie bricht, max. 3'."]];
+ ["Plank","Unterarmstütz bis die Linie bricht, max. 5' (300 s). Zeit in Sekunden."]];
 document.getElementById("testCards").innerHTML=TESTS.map(t=>`<div class="card"><h3>${t[0]}</h3><div>${t[1]}</div></div>`).join("");
 
 const TDATE={T1:"22.10.2026",T2:"10.12.2026",T3:"25.3.2027"};
@@ -548,7 +571,7 @@ function parseRoster(text){
     const m=l.match(/^(.*?)[,;\t ]+(\d{4})\s*$/); return {name:(m?m[1]:l).trim(), jg:m?m[2]:""};});
 }
 document.getElementById("rosterSave").addEventListener("click",()=>{
-  roster=parseRoster(rosterEl.value); saveAll(); renderTF();
+  roster=parseRoster(rosterEl.value); saveAll(); renderTF(); if(!sw.running) renderSW();
   const s=document.getElementById("rosterStatus"); s.className="status"; s.textContent=`${roster.length} Kids übernommen.`;
   if(api) sync({action:"roster",kids:roster},s,`${roster.length} Kids für alle gespeichert.`);
 });
@@ -581,7 +604,7 @@ async function apiCall(body){
 function applyData(d){
   roster=d.kids||[]; TS.forEach(t=>results[t]=(d.res&&d.res[t])||{});
   queue.forEach(it=>{results[it.t][it.name]=Object.assign({},results[it.t][it.name],{[it.f]:it.v});});
-  saveAll(); if(document.activeElement!==rosterEl) rosterEl.value=rosterText(); if(!focusInTF()) renderTF();
+  saveAll(); if(document.activeElement!==rosterEl) rosterEl.value=rosterText(); if(!focusInTF()) renderTF(); if(typeof sw!=="undefined"&&!sw.running) renderSW();
 }
 function errText(e){return e&&e.message==="code"?"Teamcode stimmt nicht.":"Keine Verbindung zum Google Sheet. Adresse prüfen oder später nochmals versuchen.";}
 async function sync(body,statusEl,okText){
@@ -631,7 +654,82 @@ document.getElementById("apiOff").addEventListener("click",e=>{
 });
 if(window.claude){document.getElementById("syncCard").hidden=true;api=null;}
 syncUI(); if(api) refresh(false);
-setInterval(()=>{if(api&&!document.hidden&&!document.getElementById("tests").hidden&&!focusInTF())refresh(true);},20000);
+setInterval(()=>{if(api&&!document.hidden&&!document.getElementById("tests").hidden&&!focusInTF()&&!sw.running)refresh(true);},20000);
+
+/* ---------- Stoppuhr ---------- */
+function commitValue(t,name,f,v){
+  results[t][name]=Object.assign({},results[t][name],{[f]:v}); lsSet("res2-"+t,results[t]);
+  if(tfTime.value===t&&!focusInTF()) renderTF();
+  if(api){queue.set(t+"|"+name+"|"+f,{t,name,f,v});clearTimeout(qTimer);qTimer=setTimeout(flushQueue,800);}
+}
+const sw={mode:"pl",running:false,t0:0,slots:[],raf:0,lock:null,byT:{},cur:null};
+const swGrid=document.getElementById("swGrid"), swTime=document.getElementById("swTime"), swStatus=document.getElementById("swStatus");
+const PLANK_MAX=300;
+const fmtSW=sec=>sw.mode==="pl"?`${Math.floor(sec)} s`:sec.toFixed(2);
+function swHelp(){document.getElementById("swHelp").textContent=sw.mode==="pl"
+  ?"Namen wählen, alle gleichzeitig mit «Start» los. Bricht die Körperlinie, «Stopp» beim Kind drücken. Nach 5 Minuten (300 s) stoppt die Uhr für alle, die noch halten. Die Sekunden landen direkt in der Liste des gewählten Zeitpunkts."
+  :"Namen wählen, «Start» bei der ersten Bewegung drücken, «Ziel» wenn die Brust über der Linie ist. Pro Kind gilt automatisch die bessere Zeit aus allen Läufen.";}
+function swBuild(keepNames){
+  const n=sw.mode==="pl"?12:4, old=sw.slots;
+  sw.slots=Array.from({length:n},(_,i)=>({name:keepNames&&old[i]?old[i].name:"",end:null,note:""}));
+  renderSW();
+}
+function optHTML(sel){
+  const t=swTime.value,f=sw.mode;
+  return `<option value="">– Name –</option>`+roster.map(k=>{const v=(results[t][k.name]||{})[f];
+    return `<option value="${esc(k.name)}"${k.name===sel?" selected":""}>${esc(k.name)}${v?" ✓":""}</option>`;}).join("");
+}
+function renderSW(){
+  swGrid.innerHTML=sw.slots.map((s,i)=>`<div class="slot${s.end!=null?" done":""}">
+    <select id="sw-sel-${i}" data-i="${i}" aria-label="${sw.mode==="pl"?"Platz":"Bahn"} ${i+1}" ${sw.running?"disabled":""}>${optHTML(s.name)}</select>
+    <div class="swt" id="sw-t-${i}">${fmtSW(s.end!=null?s.end:0)}</div>
+    <div class="swn">${esc(s.note)}</div>
+    <button type="button" class="btn stop" data-stop="${i}" ${!sw.running||s.end!=null||!s.name?"disabled":""}>${sw.mode==="pl"?"Stopp":"Ziel"}</button></div>`).join("");
+  document.getElementById("swStart").disabled=sw.running;
+  document.querySelectorAll(".seg .btn").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.mode===sw.mode);b.disabled=sw.running;});
+  swTime.disabled=sw.running;
+}
+function tick(){
+  if(!sw.running)return;
+  const el=(performance.now()-sw.t0)/1000;
+  sw.slots.forEach((s,i)=>{if(s.name&&s.end==null){const d=document.getElementById("sw-t-"+i);if(d)d.textContent=fmtSW(el);
+    if(sw.mode==="pl"&&el>=PLANK_MAX)stopSlot(i,PLANK_MAX);}});
+  if(sw.running)sw.raf=requestAnimationFrame(tick);
+}
+function stopSlot(i,forced){
+  const s=sw.slots[i]; if(!sw.running||!s||s.end!=null||!s.name)return;
+  const el=forced!=null?forced:(performance.now()-sw.t0)/1000; s.end=el; const t=swTime.value;
+  if(sw.mode==="pl"){const v=Math.min(PLANK_MAX,Math.floor(el));commitValue(t,s.name,"pl",String(v));s.note=v>=PLANK_MAX?"5 min erreicht · 300 s eingetragen":`${v} s eingetragen`;}
+  else{const v=Math.round(el*100)/100, old=num((results[t][s.name]||{}).s20), best=old!=null?Math.min(old,v):v;
+    commitValue(t,s.name,"s20",best.toFixed(2)); s.note=old!=null&&best<v?`Bestzeit bleibt ${best.toFixed(2)}`:`${best.toFixed(2)} eingetragen`;}
+  if(sw.slots.every(x=>!x.name||x.end!=null)){sw.running=false;cancelAnimationFrame(sw.raf);
+    try{sw.lock&&sw.lock.release();}catch(e){} sw.lock=null;
+    swStatus.className="status";swStatus.textContent="Alle gestoppt, Resultate sind in der Liste.";}
+  renderSW();
+}
+swGrid.addEventListener("change",e=>{const i=e.target.dataset.i;if(i==null)return;sw.slots[i].name=e.target.value;sw.slots[i].end=null;sw.slots[i].note="";renderSW();});
+swGrid.addEventListener("click",e=>{const b=e.target.closest("[data-stop]");if(b)stopSlot(+b.dataset.stop);});
+document.getElementById("swStart").addEventListener("click",async()=>{
+  if(!sw.slots.some(s=>s.name)){swStatus.className="status err";swStatus.textContent="Zuerst mindestens einen Namen wählen.";return;}
+  const names=sw.slots.map(s=>s.name).filter(Boolean); if(new Set(names).size!==names.length){swStatus.className="status err";swStatus.textContent="Ein Name ist doppelt gewählt.";return;}
+  sw.slots.forEach(s=>{s.end=null;s.note="";}); sw.running=true; sw.t0=performance.now();
+  swStatus.className="status"; swStatus.textContent="Läuft …"; renderSW(); sw.raf=requestAnimationFrame(tick);
+  try{if(navigator.wakeLock)sw.lock=await navigator.wakeLock.request("screen");}catch(e){}
+});
+document.getElementById("swZero").addEventListener("click",()=>{
+  sw.running=false; cancelAnimationFrame(sw.raf); try{sw.lock&&sw.lock.release();}catch(e){} sw.lock=null;
+  sw.slots.forEach(x=>{x.end=null;x.note="";}); renderSW();
+  swStatus.className="status"; swStatus.textContent="Auf 0 gestellt. Bereits eingetragene Zeiten bleiben in der Liste, bis sie neu gemessen werden.";});
+let clrArm=false;
+document.getElementById("swClear").addEventListener("click",e=>{
+  if(sw.running){if(!clrArm){clrArm=true;e.target.textContent="Wirklich abbrechen?";setTimeout(()=>{clrArm=false;e.target.textContent="Neue Gruppe";},3000);return;}
+    sw.running=false;cancelAnimationFrame(sw.raf);clrArm=false;e.target.textContent="Neue Gruppe";}
+  swBuild(false);swStatus.textContent="";});
+document.querySelectorAll(".seg .btn").forEach(b=>b.addEventListener("click",()=>{if(sw.running)return;sw.mode=b.dataset.mode;swHelp();swBuild(false);}));
+function swSwitch(){ if(sw.cur&&sw.cur!==swTime.value){sw.byT[sw.cur]=sw.slots; sw.slots=sw.byT[swTime.value]||[]; if(!sw.slots.length) swBuild(false);} sw.cur=swTime.value; renderSW(); }
+swTime.addEventListener("change",()=>{tfTime.value=swTime.value;renderTF();swSwitch();});
+tfTime.addEventListener("change",()=>{if(sw.running){tfTime.value=swTime.value;renderTF();return;}swTime.value=tfTime.value;swSwitch();});
+swHelp(); swBuild(false); sw.cur=swTime.value;
 
 let dl=null; (async()=>{try{if(window.claude&&window.claude.use) dl=await window.claude.use("downloads");}catch(e){}})();
 async function saveFile(filename,data,mime,statusEl){
@@ -664,7 +762,7 @@ document.getElementById("xlsxIn").addEventListener("change",async e=>{
       });
       found.push(`${t}: ${cnt} Kids`);
     });
-    roster=[...names.values()]; saveAll(); rosterEl.value=rosterText(); renderTF();
+    roster=[...names.values()]; saveAll(); rosterEl.value=rosterText(); renderTF(); if(!sw.running) renderSW();
     if(api){const items=[];TS.forEach(t=>Object.entries(results[t]).forEach(([name,r])=>Object.entries(r).forEach(([f,v])=>items.push({t,name,f,v}))));
       await sync({action:"roster",kids:roster},st,"");if(items.length) await sync({action:"many",items},st,"");}
     st.className="status"; st.textContent=found.length?`Geladen – ${found.join(" · ")}.`:"Keine Testblätter (T1/T2/T3) gefunden.";
@@ -774,7 +872,7 @@ function laufkarten(){
 }
 document.getElementById("lk1").addEventListener("click",laufkarten);
 const nextT=(()=>{const order=[["T1",D(2026,10,22)],["T2",D(2026,12,10)],["T3",D(2027,3,25)]];const n=order.find(o=>o[1]>=today);return n?n[0]:"T3";})();
-document.getElementById("lkTime").value=nextT; tfTime.value=nextT; renderTF();
+document.getElementById("lkTime").value=nextT; tfTime.value=nextT; swTime.value=nextT; sw.cur=nextT; renderTF(); if(!sw.running) renderSW();
 
 document.getElementById("wkBody").innerHTML=COMPS.map(c=>`<tr style="${c[0]<today?'opacity:.55':''}"><td>${esc(c[1])}</td><td><b>${esc(c[2])}</b></td><td>${esc(c[3])}</td><td>${c[4]}</td></tr>`).join("");
 
