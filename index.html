@@ -1,3 +1,9 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}</style>
 <title>Wintertraining LKZ U16</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -135,8 +141,12 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .testform input:focus{outline:2px solid var(--lane);outline-offset:0}
 .testform td{padding:4px 5px;vertical-align:middle}
 .testform td.name{white-space:nowrap;font-weight:600;padding-left:10px}
-select,textarea{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+select,textarea,.field input{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
+.syncform{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+@media (max-width:560px){.syncform{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);min-width:0}
+.field input{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .status{font-size:.88rem;color:var(--easy);min-height:1.2em}
 .status.err{color:var(--peak)}
 .store{font-size:.8rem;color:var(--muted)}
@@ -155,6 +165,8 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
+</head>
+<body>
 <header class="top">
   <div class="wrap">
     <h1>Wintertraining <span>LKZ U16</span></h1>
@@ -229,9 +241,20 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
     </tbody></table></div>
   <div class="cards" id="testCards"></div>
 
+  <div class="card wide" id="syncCard">
+    <h3>Gemeinsame Daten</h3>
+    <div class="sub" id="syncInfo">Einmal pro Gerät verbinden. Danach sehen alle Trainer/innen dieselbe Kids-Liste und dieselben Resultate (gespeichert im Google Sheet).</div>
+    <div class="syncform" id="syncForm">
+      <label class="field">Web-App-Adresse<input id="apiUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label class="field">Teamcode<input id="apiCode" type="password" autocomplete="off"></label>
+    </div>
+    <div class="btns"><button class="btn primary" type="button" id="apiConnect">Verbinden</button><button class="btn" type="button" id="apiRefresh" hidden>Aktualisieren</button><button class="btn" type="button" id="apiOff" hidden>Trennen</button></div>
+    <div class="status" id="apiStatus" aria-live="polite"></div>
+  </div>
+
   <div class="card wide">
     <h3>1 · Letzte Excel-Datei hochladen</h3>
-    <div class="sub">Die Resultate werden nur in deiner Excel-Datei aufbewahrt. Vor T2 und T3 die zuletzt gespeicherte Datei hier hochladen: Kids-Liste und alte Resultate werden übernommen. Vor T1 überspringen.</div>
+    <div class="sub">Nur nötig ohne gemeinsame Daten oder um eine alte Datei zu übernehmen. Kids-Liste und alte Resultate werden übernommen.</div>
     <input type="file" id="xlsxIn" accept=".xlsx" aria-label="Excel-Datei hochladen">
     <div class="status" id="inStatus" aria-live="polite"></div>
   </div>
@@ -527,6 +550,7 @@ function parseRoster(text){
 document.getElementById("rosterSave").addEventListener("click",()=>{
   roster=parseRoster(rosterEl.value); saveAll(); renderTF();
   const s=document.getElementById("rosterStatus"); s.className="status"; s.textContent=`${roster.length} Kids übernommen.`;
+  if(api) sync({action:"roster",kids:roster},s,`${roster.length} Kids für alle gespeichert.`);
 });
 
 const tfBody=document.getElementById("tfBody"), tfTime=document.getElementById("tfTime"), tfStatus=document.getElementById("tfStatus");
@@ -540,8 +564,74 @@ tfBody.addEventListener("input",e=>{
   const i=e.target; if(!i.dataset.n)return; const t=tfTime.value;
   results[t][i.dataset.n]=Object.assign({},results[t][i.dataset.n],{[i.dataset.f]:i.value.trim()});
   lsSet("res2-"+t,results[t]);
+  if(api){queue.set(t+"|"+i.dataset.n+"|"+i.dataset.f,{t,name:i.dataset.n,f:i.dataset.f,v:i.value.trim()});clearTimeout(qTimer);qTimer=setTimeout(flushQueue,800);tfStatus.className="status";tfStatus.textContent="…";}
 });
 renderTF();
+
+/* ---------- Gemeinsame Daten (Google Sheet) ---------- */
+let api=lsGet("api",null); const queue=new Map(); let qTimer=null, busy=false;
+const apiStatus=document.getElementById("apiStatus");
+const focusInTF=()=>!!(document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.n);
+async function apiCall(body){
+  const opts=body?{method:"POST",body:JSON.stringify(Object.assign({code:api.code},body))}:undefined;
+  const url=body?api.url:api.url+(api.url.includes("?")?"&":"?")+"code="+encodeURIComponent(api.code);
+  const r=await fetch(url,opts); const j=await r.json();
+  if(!j.ok) throw new Error(j.error||"fehler"); return j.data;
+}
+function applyData(d){
+  roster=d.kids||[]; TS.forEach(t=>results[t]=(d.res&&d.res[t])||{});
+  queue.forEach(it=>{results[it.t][it.name]=Object.assign({},results[it.t][it.name],{[it.f]:it.v});});
+  saveAll(); if(document.activeElement!==rosterEl) rosterEl.value=rosterText(); if(!focusInTF()) renderTF();
+}
+function errText(e){return e&&e.message==="code"?"Teamcode stimmt nicht.":"Keine Verbindung zum Google Sheet. Adresse prüfen oder später nochmals versuchen.";}
+async function sync(body,statusEl,okText){
+  try{busy=true;applyData(await apiCall(body));statusEl.className="status";statusEl.textContent=okText;}
+  catch(e){statusEl.className="status err";statusEl.textContent=errText(e);}
+  finally{busy=false;}
+}
+async function flushQueue(){
+  if(!queue.size)return; if(busy){qTimer=setTimeout(flushQueue,500);return;}
+  const items=[...queue.values()]; queue.clear();
+  try{busy=true;const d=await apiCall({action:"many",items});applyData(d);tfStatus.className="status";tfStatus.textContent="Für alle gespeichert.";}
+  catch(e){items.forEach(it=>queue.set(it.t+"|"+it.name+"|"+it.f,it));tfStatus.className="status err";tfStatus.textContent=errText(e)+" Wird erneut versucht.";qTimer=setTimeout(flushQueue,5000);}
+  finally{busy=false;}
+}
+async function refresh(quiet){
+  if(!api||busy||queue.size)return;
+  try{busy=true;applyData(await apiCall());if(!quiet){apiStatus.className="status";apiStatus.textContent="Aktualisiert "+new Date().toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"})+".";}}
+  catch(e){if(!quiet){apiStatus.className="status err";apiStatus.textContent=errText(e);}}
+  finally{busy=false;}
+}
+function syncUI(){
+  const on=!!api;
+  document.getElementById("syncForm").hidden=on;
+  document.getElementById("apiConnect").hidden=on;
+  document.getElementById("apiRefresh").hidden=!on;
+  document.getElementById("apiOff").hidden=!on;
+  document.getElementById("syncInfo").textContent=on?"Verbunden: Kids-Liste und Resultate werden automatisch für alle gespeichert und alle 20 Sekunden aktualisiert.":"Einmal pro Gerät verbinden. Danach sehen alle Trainer/innen dieselbe Kids-Liste und dieselben Resultate (gespeichert im Google Sheet).";
+}
+document.getElementById("apiConnect").addEventListener("click",async()=>{
+  const url=document.getElementById("apiUrl").value.trim(), code=document.getElementById("apiCode").value.trim();
+  if(!/^https:\/\/script\.google\.com\//.test(url)||!code){apiStatus.className="status err";apiStatus.textContent="Bitte Web-App-Adresse (beginnt mit https://script.google.com/) und Teamcode eingeben.";return;}
+  api={url,code}; apiStatus.className="status"; apiStatus.textContent="Verbinde …";
+  try{const d=await apiCall();
+    if(!(d.kids||[]).length&&roster.length){applyData(await apiCall({action:"roster",kids:roster}));
+      const items=[];TS.forEach(t=>Object.entries(results[t]).forEach(([name,r])=>Object.entries(r).forEach(([f,v])=>{if(v!=="")items.push({t,name,f,v});})));
+      if(items.length) applyData(await apiCall({action:"many",items}));
+      apiStatus.textContent="Verbunden. Deine bisherigen Daten wurden ins Google Sheet übernommen.";}
+    else{applyData(d);apiStatus.textContent=`Verbunden. ${(d.kids||[]).length} Kids geladen.`;}
+    lsSet("api",api); syncUI();
+  }catch(e){api=null;apiStatus.className="status err";apiStatus.textContent=errText(e);}
+});
+document.getElementById("apiRefresh").addEventListener("click",()=>refresh(false));
+let offArm=false;
+document.getElementById("apiOff").addEventListener("click",e=>{
+  if(!offArm){offArm=true;e.target.textContent="Wirklich trennen?";setTimeout(()=>{offArm=false;e.target.textContent="Trennen";},3000);return;}
+  api=null;try{localStorage.removeItem("api")}catch(err){}offArm=false;e.target.textContent="Trennen";syncUI();apiStatus.className="status";apiStatus.textContent="Getrennt. Die Daten im Google Sheet bleiben erhalten.";
+});
+if(window.claude){document.getElementById("syncCard").hidden=true;api=null;}
+syncUI(); if(api) refresh(false);
+setInterval(()=>{if(api&&!document.hidden&&!document.getElementById("tests").hidden&&!focusInTF())refresh(true);},20000);
 
 let dl=null; (async()=>{try{if(window.claude&&window.claude.use) dl=await window.claude.use("downloads");}catch(e){}})();
 async function saveFile(filename,data,mime,statusEl){
@@ -575,6 +665,8 @@ document.getElementById("xlsxIn").addEventListener("change",async e=>{
       found.push(`${t}: ${cnt} Kids`);
     });
     roster=[...names.values()]; saveAll(); rosterEl.value=rosterText(); renderTF();
+    if(api){const items=[];TS.forEach(t=>Object.entries(results[t]).forEach(([name,r])=>Object.entries(r).forEach(([f,v])=>items.push({t,name,f,v}))));
+      await sync({action:"roster",kids:roster},st,"");if(items.length) await sync({action:"many",items},st,"");}
     st.className="status"; st.textContent=found.length?`Geladen – ${found.join(" · ")}.`:"Keine Testblätter (T1/T2/T3) gefunden.";
   }catch(err){st.className="status err";st.textContent="Die Datei konnte nicht gelesen werden. Bitte eine von dieser Seite gespeicherte Excel-Datei wählen.";}
   e.target.value="";
@@ -705,3 +797,6 @@ const h=(location.hash||"").slice(1); if(TABS.includes(h)) startTab=h;
 show(startTab);
 })();
 </script>
+
+</body>
+</html>
