@@ -161,6 +161,9 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
 .swn{font-size:.7rem;color:var(--muted);text-align:center;min-height:1em;line-height:1.2}
 .stop{font-size:1.05rem;padding:12px 8px;background:var(--tartan);color:#fff;border-color:var(--tartan)}
 .stop:disabled{opacity:.3;cursor:default}
+.btn.mini{font-size:.72rem;padding:3px 7px;margin-left:4px;text-transform:none;letter-spacing:0;vertical-align:middle}
+.sw-box{max-width:760px;max-height:94vh}
+.sw-box h3{font-size:1.3rem}
 .btn.big{font-size:1.1rem;padding:12px 26px}
 .btn:disabled{opacity:.4;cursor:default}
 .status{font-size:.88rem;color:var(--easy);min-height:1.2em}
@@ -293,19 +296,8 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
     <div class="status" id="lkStatus" aria-live="polite"></div>
   </div>
 
-  <div class="card wide" id="swCard">
-    <h3>4 · Plank-Stoppuhr (12 Plätze)</h3>
-    <div class="toolbar">
-      <label>Zeitpunkt <select id="swTime"><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option></select></label>
-    </div>
-    <div class="sub" id="swHelp"></div>
-    <div class="swgrid" id="swGrid"></div>
-    <div class="btns"><button class="btn primary big" type="button" id="swStart">Start</button><button class="btn" type="button" id="swZero">Auf 0 stellen</button><button class="btn" type="button" id="swClear">Neue Gruppe</button></div>
-    <div class="status" id="swStatus" aria-live="polite"></div>
-  </div>
-
   <div class="card wide">
-    <h3>5 · Resultate eintragen und Excel speichern</h3>
+    <h3>4 · Resultate eintragen und Excel speichern</h3>
     <div class="toolbar">
       <label>Zeitpunkt <select id="tfTime"><option value="T1">T1 · Okt 2026</option><option value="T2">T2 · Dez 2026</option><option value="T3">T3 · März/April 2027</option></select></label>
       <button class="btn primary" type="button" id="xlsxBtn">Excel speichern</button>
@@ -313,7 +305,7 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
     <div class="sub">Das Excel enthält ein Blatt pro Test und ab T2 die Blätter «Entwicklung» (T1-T2, ab T3 auch T2-T3 und T1-T3) mit Differenzen: grün verbessert, rot verschlechtert.</div>
     <div class="status" id="tfStatus" aria-live="polite"></div>
     <div class="tbl-wrap"><table class="testform">
-      <thead><tr><th>Name</th><th>Jg</th><th class="num">20 m (s)</th><th class="num">Standweit (m)</th><th class="num">5er (m)</th><th class="num">Kugel-Schocken (m)</th><th class="num">Plank (s)</th></tr></thead>
+      <thead><tr><th>Name</th><th>Jg</th><th class="num">20 m (s)</th><th class="num">Standweit (m)</th><th class="num">5er (m)</th><th class="num">Kugel-Schocken (m)</th><th class="num">Plank (s) <button class="btn mini" type="button" id="swOpen">Stoppuhr</button></th></tr></thead>
       <tbody id="tfBody"></tbody>
     </table></div>
   </div>
@@ -337,6 +329,18 @@ textarea{width:100%;min-height:150px;font-variant-numeric:tabular-nums}
 </section>
 
 </div></main>
+<div class="ov sw-ov" id="swOv" hidden role="dialog" aria-modal="true" aria-labelledby="swTitle">
+  <div class="ov-box sw-box">
+    <div class="ov-head"><h3 id="swTitle">Plank-Stoppuhr</h3><button class="btn" type="button" id="swClose">Schliessen</button></div>
+    <div class="toolbar">
+      <label>Zeitpunkt <select id="swTime"><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option></select></label>
+    </div>
+    <div class="sub" id="swHelp"></div>
+    <div class="swgrid" id="swGrid"></div>
+    <div class="btns"><button class="btn primary big" type="button" id="swStart">Start</button><button class="btn" type="button" id="swZero">Auf 0 stellen</button><button class="btn" type="button" id="swClear">Neue Gruppe</button></div>
+    <div class="status" id="swStatus" aria-live="polite"></div>
+  </div>
+</div>
 <div class="ov" id="ov" hidden role="dialog" aria-modal="true" aria-labelledby="ovTitle">
   <div class="ov-box"><div class="ov-head"><span id="ovGroup"></span><button class="btn" type="button" id="ovClose">Schliessen</button></div><div id="ovBody"></div></div>
 </div>
@@ -671,7 +675,7 @@ const swGrid=document.getElementById("swGrid"), swTime=document.getElementById("
 const PLANK_MAX=300;
 const fmtSW=sec=>sw.mode==="pl"?`${Math.floor(sec)} s`:sec.toFixed(2);
 function swHelp(){document.getElementById("swHelp").textContent=sw.mode==="pl"
-  ?"Namen wählen, alle gleichzeitig mit «Start» los. Bricht die Körperlinie, aufs Feld des Kindes tippen. Nach 5 Minuten (300 s) stoppt die Uhr für alle, die noch halten. Die Sekunden landen direkt in der Liste des gewählten Zeitpunkts."
+  ?"Namen wählen → Start. Aufs Feld tippen = Stopp. Nach 300 s stoppt die Uhr automatisch."
   :"Namen wählen, «Start» bei der ersten Bewegung drücken, «Ziel» wenn die Brust über der Linie ist. Pro Kind gilt automatisch die bessere Zeit aus allen Läufen.";}
 function swBuild(keepNames){
   const n=sw.mode==="pl"?12:4, old=sw.slots;
@@ -742,6 +746,12 @@ function swSwitch(){ if(sw.cur&&sw.cur!==swTime.value){sw.byT[sw.cur]=sw.slots; 
 swTime.addEventListener("change",()=>{tfTime.value=swTime.value;renderTF();swSwitch();});
 tfTime.addEventListener("change",()=>{if(sw.running){tfTime.value=swTime.value;renderTF();return;}swTime.value=tfTime.value;swSwitch();});
 swHelp(); swBuild(false); sw.cur=swTime.value;
+const swOv=document.getElementById("swOv");
+document.getElementById("swOpen").addEventListener("click",()=>{if(!sw.running){swTime.value=tfTime.value;swSwitch();}swOv.hidden=false;document.getElementById("swClose").focus();});
+function swHide(){swOv.hidden=true;document.getElementById("swOpen").focus();}
+document.getElementById("swClose").addEventListener("click",swHide);
+swOv.addEventListener("click",e=>{if(e.target===swOv&&!sw.running)swHide();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!swOv.hidden&&!sw.running)swHide();});
 
 let dl=null; (async()=>{try{if(window.claude&&window.claude.use) dl=await window.claude.use("downloads");}catch(e){}})();
 async function saveFile(filename,data,mime,statusEl){
